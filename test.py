@@ -28,6 +28,10 @@ torchvision_version = list(map(int, torchvision.__version__.split(".")[:2]))
 
 torch.use_deterministic_algorithms(True)
 
+''' 
+    query/gallery CSV'lerini yükleyip özellik çikariyor, sonuçlari pytorch_result.mat dosyasina kaydederek metrikleri hesaplamak için evaluate.py'yi tetikliyor.
+'''
+
 ######################################################################
 # Options
 # --------
@@ -137,7 +141,7 @@ print('Complete in {:.0f}m {:.2f}s'.format(
 result = {'gallery_f': gallery_feature.numpy(), 'gallery_label': gallery_labels,
           'query_f': query_feature.numpy(), 'query_label': query_labels,
           'gallery_cam': gallery_cam, 'query_cam': query_cam}
-scipy.io.savemat('pytorch_result.mat', result)
+scipy.io.savemat('pytorch_result2.mat', result)
 
 print("Feature extraction finished, starting evaluation ...")
 torch.cuda.empty_cache()

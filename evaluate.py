@@ -16,65 +16,79 @@ args = parser.parse_args()
 # Evaluate
 
 def evaluate(qf, ql, gf, gl, qc=None, gc=None, K=100):
+    """
+    Tek bir query için:
+      - gf @ qf benzerlik (cosine varsayımı: embedding'ler L2-normalize ise)
+      - Skorları azalan sırada diz
+      - good_index: aynı ID (ql) olan galeriler
+      - junk_index: (1) etiket < 0 olanlar + (2) aynı ID ve aynı CAM olanlar (kamera filtresi açıksa)
+      - İsteğe bağlı K kesmesi (mAP@K / CMC@K)
+    """
+    # Skor: (N_galeri, D) x (D, 1) -> (N_galeri, 1)
     query = qf.view(-1, 1)
-    score = torch.mm(gf, query)
-    score = score.squeeze(1).cpu()
-    score = score.numpy()
+    score = torch.mm(gf, query).squeeze(1).cpu().numpy()
 
-    index = np.argsort(score)
-    index = index[::-1]    
-    # index has the scores decreasing at this point
-    
-    query_index = np.argwhere(gl == ql)
-    junk_index = np.argwhere(gl < 0)
+    # Skoru azalan sırala (en benzerler başa)
+    index = np.argsort(score)[::-1]
 
-    # if camera labels are provided, exclude gallery images with the same camera and id as the query
+    # Aynı ID olanlar (good) ve etiket < 0 olanlar (junk, yoksa boş)
+    good_index = np.where(gl == ql)[0]
+    junk_index = np.where(gl < 0)[0]
+
+    # Kamera filtresi: aynı ID + aynı CAM -> junk
     if qc is not None and gc is not None:
-        camera_index = np.argwhere(qc == gc)
-        good_index = np.setdiff1d(query_index, camera_index, assume_unique=True)
-        camera_junk = np.intersect1d(camera_index, query_index, assume_unique=True)
-        junk_index = np.append(junk_index, camera_junk)
-    else:
-        good_index = query_index
+        camera_index = np.where(gc == qc)[0]                       # aynı kamera olan galeri pozisyonları
+        camera_junk = np.intersect1d(camera_index, good_index, assume_unique=True)
+        junk_index = np.concatenate([junk_index, camera_junk])     # junk'a ekle
+        # good: aynı id olup junk olmayanlar
+        good_index = np.setdiff1d(good_index, camera_index, assume_unique=True)
 
-    # only calc up to K
-    if K < len(index):
+    # K sınırı (mAP@K / CMC@K)
+    if 0 < K < len(index):
         index = index[:K]
         good_index = np.intersect1d(index, good_index, assume_unique=True)
         junk_index = np.intersect1d(index, junk_index, assume_unique=True)
 
-    CMC_tmp = compute_mAP(index, good_index, junk_index)
-    return CMC_tmp
+    return compute_mAP(index, good_index, junk_index)
 
 
 def compute_mAP(index, good_index, junk_index):
-    ap = 0
-    cmc = torch.IntTensor(len(index)).zero_()
-    if good_index.size == 0:   # if empty
+    """
+    mAP ve CMC hesaplar.
+    - index: skorla sıralanmış galeri indeksleri (büyükten küçüğe)
+    - good_index: doğru eşleşmelerin galeri indeksleri
+    - junk_index: değerlendirme dışı (çıkarılacak) galeri indeksleri
+    Dönüş:
+      ap (float), cmc (IntTensor[K])
+    """
+    ap = 0.0
+    cmc = torch.zeros(len(index), dtype=torch.int32)
+
+    # Hiç doğru yoksa (pozitif yok), protokole göre bu sorgu mAP/CMC’ye sayılmaz.
+    if good_index.size == 0:
         cmc[0] = -1
         return ap, cmc
 
-    # remove junk_index
-    mask = np.in1d(index, junk_index, invert=True)
-    index = index[mask]
+    # Junk’ları listeden çıkar
+    mask_valid = ~np.in1d(index, junk_index)
+    index = index[mask_valid]
 
-    # find good_index index
-    ngood = len(good_index)
-    mask = np.in1d(index, good_index)
-    rows_good = np.argwhere(mask)
-    rows_good = rows_good.flatten()
+    # Good’ların bu sıralamadaki konumları
+    mask_good = np.in1d(index, good_index)
+    rows_good = np.flatnonzero(mask_good)   # 0, 5, 12, ...
 
+    # CMC: ilk doğru bulunduğu yerden itibaren 1
     cmc[rows_good[0]:] = 1
-    for i in range(ngood):
-        d_recall = 1.0 / ngood
-        precision = (i + 1) * 1.0 / (rows_good[i] + 1)
-        if rows_good[i] != 0:
-            old_precision = i * 1.0 / rows_good[i]
-        else:
-            old_precision = 1.0
-        ap = ap + d_recall * (old_precision + precision) / 2
 
-    return ap, cmc
+    # AP: doğru bulunan her pozisyonda precision ortalaması (11-pt değil, integral approx.)
+    ngood = len(good_index)
+    for i, r in enumerate(rows_good, start=1):
+        # i: şimdiye kadar bulunan doğru sayısı, r: sıralamadaki pozisyon (0-index)
+        precision = i / (r + 1)
+        old_precision = (i - 1) / r if r != 0 else 1.0
+        ap += (1.0 / ngood) * (old_precision + precision) / 2.0
+
+    return float(ap), cmc
 
 
 ######################################################################

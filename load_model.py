@@ -85,25 +85,23 @@ def load_model(n_classes, kind="resnet", ckpt=None, remove_classifier=False, **k
 
 
 def load_model_from_opts(opts_file, ckpt=None, return_feature=False, remove_classifier=False):
-    """Loads a saved model by reading its opts.yaml file.
+    """opts.yaml dosyasini okuyarak kaydedilmiş bir modeli yükler.
 
-    Parameters
+    Parametreler
     ----------
     opts_file: str
-        Path to the saved opts.yaml file of the model
+        Modelin kaydedilmiş opts.yaml dosyasinin yolu
     ckpt: str
-        Path to the saved checkpoint of the model (net_X.pth)
+        Modelin kaydedilmiş checkpoint dosyasinin yolu (net_X.pth)
     return_feature: bool
-        Shows whether the model has to return the feature along with the result in the forward
-        function. This is needed for certain loss functions (circle loss).
+        Gösterir ki model ileri besleme fonksiyonunda sonucu ile birlikte özelliği döndürmeli mi. Bu, belirli kayıp fonksiyonlari (circle loss) için gereklidir
     remove_classifier: bool
-        Whether we have to remove the classifier block from the model, which is needed for
-        training but not for evaluation
+        Modelden siniflandirici(classifier) bloğunu kaldirmamiz gerekip gerekmediği, bu eğitim için gerekli ancak değerlendirme için değil.
 
     Returns
     -------
     model: torch.nn.Module
-        The model requested to be loaded.
+        Yüklenen model.
     """
 
     with open(opts_file, "r") as stream:
