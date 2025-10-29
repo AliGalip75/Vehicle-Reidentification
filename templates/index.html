@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Vehicle Re-ID Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #fafafa; text-align: center; margin-top: 50px; }
+    .container { background: white; padding: 20px; border-radius: 10px; width: 400px; margin: auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    img { width: 180px; margin: 10px; border-radius: 8px; border: 1px solid #ddd; }
+    button { background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #45a049; }
+    #result { margin-top: 20px; font-size: 1.2em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Vehicle Re-Identification Demo</h2>
+    <form id="compare-form" enctype="multipart/form-data">
+      <input type="file" name="image1" accept="image/*" required><br>
+      <input type="file" name="image2" accept="image/*" required><br>
+      <button type="submit">Karşılaştır</button>
+    </form>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    document.getElementById('compare-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch('/compare', { method: 'POST', body: formData });
+      const data = await res.json();
+      document.getElementById('result').innerHTML =
+        `<p><strong>Benzerlik Oranı:</strong> %${data.similarity_percent.toFixed(2)}</p>`;
+    });
+  </script>
+</body>
+</html>
