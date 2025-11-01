@@ -548,6 +548,7 @@ def train_model(model, criterion, start_epoch=0, num_epochs=25, num_workers=2):
                 inputs, labels = data
                 inputs, labels = inputs.to(device), labels.to(device)
 
+                #! Bir önceki adımın hatalarını (gradient) hafızadan sil, yoksa hatalar birikir.
                 optimizer.zero_grad()
 
                 # İleri geçiş (val’de gradsız)
@@ -557,6 +558,7 @@ def train_model(model, criterion, start_epoch=0, num_epochs=25, num_workers=2):
                 else:
                     if fp16:
                         autocast.__enter__()
+                    #? Batchsize kadar resmi modele ver, Batchsize kadar "embedding" ve Batchsize kadar "ID tahmini" (logit) çıkarsın.
                     outputs = model(inputs)
 
                 if return_feature:
@@ -578,7 +580,9 @@ def train_model(model, criterion, start_epoch=0, num_epochs=25, num_workers=2):
                         scaler.step(optimizer)
                         scaler.update()
                     else:
+                        #? Hatayı (loss) al ve modeldeki milyonlarca parametreye geriye doğru dağıt.
                         loss.backward()
+                        #? Optimizöre dönüp de ki: "Hata paylarını hesapladım, şimdi sen bu parametreleri lr (öğrenme hızı) kadar düzelt.
                         optimizer.step()
 
                 # Doğrulamada özellik ve etiket topla (Re-ID metrikleri için)

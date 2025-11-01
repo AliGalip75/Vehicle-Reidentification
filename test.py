@@ -141,7 +141,7 @@ print('Complete in {:.0f}m {:.2f}s'.format(
 result = {'gallery_f': gallery_feature.numpy(), 'gallery_label': gallery_labels,
           'query_f': query_feature.numpy(), 'query_label': query_labels,
           'gallery_cam': gallery_cam, 'query_cam': query_cam}
-scipy.io.savemat('pytorch_result2.mat', result)
+scipy.io.savemat('pytorch_result.mat', result)
 
 print("Feature extraction finished, starting evaluation ...")
 torch.cuda.empty_cache()
