@@ -10,7 +10,6 @@ def deactivate_mixstyle(m):
     if type(m) == MixStyle:
         m.set_activation_status(False)
 
-
 def activate_mixstyle(m):
     if type(m) == MixStyle:
         m.set_activation_status(True)

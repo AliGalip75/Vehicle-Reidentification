@@ -29,6 +29,7 @@ import tqdm
 
 # Metrik öğrenme kayıpları ve miner'lar
 from pytorch_metric_learning import losses, miners
+from pytorch_metric_learning.losses import TripletMarginLoss
 
 # Torch ve torchvision sürüm bilgileri
 version = list(map(int, torch.__version__.split(".")[:2]))
@@ -498,8 +499,8 @@ def train_model(model, criterion, start_epoch=0, num_epochs=25, num_workers=2):
 
     # Mixed precision için scaler ve autocast
     if fp16:
-        scaler = amp.GradScaler("cuda" if use_gpu else "cpu")
-        autocast = amp.autocast("cuda" if use_gpu else "cpu")
+        scaler = torch.GradScaler("cuda" if use_gpu else "cpu")
+        autocast = torch.autocast("cuda" if use_gpu else "cpu")
 
     # Optimizatör ve LR scheduler
     optim_name = optim.SGD
@@ -558,15 +559,13 @@ def train_model(model, criterion, start_epoch=0, num_epochs=25, num_workers=2):
                         autocast.__enter__()
                     outputs = model(inputs)
 
-                # Çıktı düzeni: return_feature True ise (logits, feat) beklenir
                 if return_feature:
                     logits, ff = outputs
-                    fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
-                    ff = ff.div(fnorm.expand_as(ff))
-                    loss = criterion(logits, labels)
+                    ff = F.normalize(ff, p=2, dim=1)
+                    loss = combined_loss(logits, ff, labels)
                 else:
                     loss = criterion(outputs, labels)
-                    ff = outputs  # feat olarak logits kullanılıyor (sınıflandırma bazlı eğitim)
+                    ff = outputs
 
                 running_loss += loss.item() * inputs.size(0)
 
@@ -603,7 +602,7 @@ def train_model(model, criterion, start_epoch=0, num_epochs=25, num_workers=2):
                 # Modeli periyodik kaydet ve eğriyi çiz
                 if epoch == num_epochs - 1 or (epoch % opt.save_freq == (opt.save_freq - 1)):
                     save_network(model, epoch)
-                    draw_curve(epoch)
+                    draw_curve()
 
             if phase == 'train':
                 scheduler.step()
@@ -629,23 +628,31 @@ def tpu_map_fn(index, flags):
 ######################################################################
 # Eğri çizimi (loss/err)
 # ----------------------
-x_epoch = []
-fig = plt.figure()
-ax0 = fig.add_subplot(121, title="loss")
-ax1 = fig.add_subplot(122, title="top1err")
 
+fig, ax0 = plt.subplots()
+ax0.set_title("Loss (Train vs Val)")
 
-def draw_curve(current_epoch):
-    """Loss ve (varsa) hata eğrilerini kaydeder."""
-    x_epoch.append(current_epoch)
-    ax0.plot(x_epoch, y_loss['train'], 'bo-', label='train')
-    ax0.plot(x_epoch, y_loss['val'], 'ro-', label='val')
-    ax1.plot(x_epoch, y_err['train'], 'bo-', label='train')
-    ax1.plot(x_epoch, y_err['val'], 'ro-', label='val')
-    if current_epoch == 0:
-        ax0.legend()
-        ax1.legend()
-    fig.savefig(os.path.join(SCRIPT_DIR, "model", name, 'train.jpg'))
+def draw_curve():
+    """Yalnızca train ve val loss grafiğini kaydeder (saf, hatasız sürüm)."""
+    ax0.clear()
+
+    # X eksenini, y_loss uzunluğuna göre oluştur
+    x = range(len(y_loss['train']))
+
+    # Eğer val loss daha kısa ise min uzunluk kadar çiz
+    min_len = min(len(y_loss['train']), len(y_loss['val']))
+
+    ax0.plot(x[:min_len], y_loss['train'][:min_len], 'bo-', label='train loss')
+    ax0.plot(x[:min_len], y_loss['val'][:min_len], 'ro-', label='val loss')
+
+    ax0.set_xlabel("Epoch")
+    ax0.set_ylabel("Loss")
+    ax0.set_title("Loss (Train vs Val)")
+    ax0.legend()
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(SCRIPT_DIR, "model", name, "train.jpg"))
+
 
 ######################################################################
 # Model kaydetme
@@ -701,6 +708,16 @@ else:
         criterion = torch.nn.CrossEntropyLoss(label_smoothing=opt.label_smoothing)
     else:
         criterion = torch.nn.CrossEntropyLoss()
+    
+    # 🔹 Triplet Loss tanımı ve birleşimi
+    triplet_criterion = TripletMarginLoss(margin=0.3)
+
+    def combined_loss(logits, features, labels):
+        ce_loss = criterion(logits, labels)
+        triplet_loss = triplet_criterion(features, labels)
+        total_loss = ce_loss + 0.5 * triplet_loss
+        return total_loss
+
 
     # Eğitimi başlat
     model = train_model(

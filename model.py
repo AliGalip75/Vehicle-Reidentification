@@ -77,7 +77,8 @@ class ft_net(nn.Module):
             if ibn:
                 torch.hub.load_state_dict_from_url = lambda *args, **kwargs: torch.load(
                     torch.hub.get_dir() + '/checkpoints/resnet50_ibn_a-d9d0bb7b.pth',
-                    map_location=torch.device('cpu')
+                    map_location=torch.device('cpu'),
+                    weights_only=True
                 )
                 model_ft = torch.hub.load(
                     'XingangPan/IBN-Net', 'resnet50_ibn_a', pretrained=True)
